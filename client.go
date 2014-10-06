@@ -279,11 +279,6 @@ func (clnt *Client) BatchGet(policy *BasePolicy, keys []*Key, binNames ...string
 		policy = NewPolicy()
 	}
 
-	// wait until all migrations are finished
-	if err := clnt.cluster.WaitUntillMigrationIsFinished(policy.timeout()); err != nil {
-		return nil, err
-	}
-
 	// same array can be used without sychronization;
 	// when a key exists, the corresponding index will be set to record
 	records := make([]*Record, len(keys))
