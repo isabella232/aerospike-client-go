@@ -28,9 +28,8 @@ import (
 
 func testPackingFor(v interface{}) interface{} {
 	packer := newPacker()
-	value := NewValue(v)
 
-	err := value.pack(packer)
+	err := packer.PackObject(v)
 	Expect(err).ToNot(HaveOccurred())
 
 	unpacker := newUnpacker(packer.buffer.Bytes(), 0, len(packer.buffer.Bytes()))
@@ -94,6 +93,11 @@ var _ = Describe("Packing Test", func() {
 			Expect(testPackingFor(v)).To(Equal(v))
 		})
 
+		It("should pack and unpack uint64 values", func() {
+			v := uint64(math.MaxUint64)
+			Expect(testPackingFor(v)).To(Equal(v))
+		})
+
 		It("should pack and unpack string values", func() {
 			v := "string123456789\n"
 			Expect(testPackingFor(v)).To(Equal(v))
@@ -111,6 +115,7 @@ var _ = Describe("Packing Test", func() {
 	})
 
 	Context("Array Value Types", func() {
+
 		It("should pack and unpack empty array of int8", func() {
 			v := []int8{}
 			Expect(testPackingFor(v)).To(Equal([]interface{}{}))
@@ -188,11 +193,10 @@ var _ = Describe("Packing Test", func() {
 			Expect(testPackingFor(v)).To(Equal([]interface{}{}))
 		})
 
-		// TODO: Resolve later
-		// It("should pack and unpack an array of uint64", func() {
-		// 	v := []uint64{1, 2, 3}
-		// 	Expect(testPackingFor(v)).To(Equal([]interface{}{1, 2, 3}))
-		// })
+		It("should pack and unpack an array of uint64", func() {
+			v := []uint64{1, 2, 3}
+			Expect(testPackingFor(v)).To(Equal([]interface{}{uint64(1), uint64(2), uint64(3)}))
+		})
 
 		It("should pack and unpack empty array of string", func() {
 			v := []string{}
@@ -202,6 +206,53 @@ var _ = Describe("Packing Test", func() {
 		It("should pack and unpack an array of string", func() {
 			v := []string{"this", "is", "an", "array", "of", "strings"}
 			Expect(testPackingFor(v)).To(Equal([]interface{}{"this", "is", "an", "array", "of", "strings"}))
+		})
+
+	})
+
+	Context("Map Value Types", func() {
+
+		It("should pack and unpack empty map", func() {
+			v := map[interface{}]interface{}{}
+			Expect(testPackingFor(v)).To(Equal(map[interface{}]interface{}{}))
+		})
+
+		It("should pack and unpack a complex map", func() {
+			v := map[interface{}]interface{}{
+				"uint8":  uint8(math.MaxUint8),
+				"int8":   int8(math.MaxInt8),
+				"mint8":  int8(math.MinInt8),
+				"uint16": uint16(math.MaxUint16),
+				"int16":  int16(math.MaxInt16),
+				"mint16": int16(math.MinInt16),
+				"uint32": uint32(math.MaxUint32),
+				"int32":  int32(math.MaxInt32),
+				"mint32": int32(math.MinInt32),
+				"uint64": uint64(math.MaxUint64),
+				"int64":  int64(math.MaxInt64),
+				"mint64": int64(math.MinInt64),
+				"str":    "this is a string",
+				"nil":    nil,
+			}
+
+			v_res := map[interface{}]interface{}{
+				"uint8":  int(math.MaxUint8),
+				"int8":   int(math.MaxInt8),
+				"mint8":  int(math.MinInt8),
+				"uint16": int(math.MaxUint16),
+				"int16":  int(math.MaxInt16),
+				"mint16": int(math.MinInt16),
+				"uint32": int(math.MaxUint32),
+				"int32":  int(math.MaxInt32),
+				"mint32": int(math.MinInt32),
+				"uint64": uint64(math.MaxUint64),
+				"int64":  int64(math.MaxInt64),
+				"mint64": int64(math.MinInt64),
+				"str":    "this is a string",
+				"nil":    nil,
+			}
+
+			Expect(testPackingFor(v)).To(Equal(v_res))
 		})
 
 	})
