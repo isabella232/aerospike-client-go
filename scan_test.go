@@ -15,10 +15,8 @@
 package aerospike_test
 
 import (
-	"flag"
 	"math"
 	"math/rand"
-	"time"
 
 	. "github.com/aerospike/aerospike-client-go"
 
@@ -28,8 +26,7 @@ import (
 
 // ALL tests are isolated by SetName and Key, which are 50 random charachters
 var _ = Describe("Scan operations", func() {
-	rand.Seed(time.Now().UnixNano())
-	flag.Parse()
+	initTestVars()
 
 	// connection data
 	var ns = "test"
@@ -43,7 +40,10 @@ var _ = Describe("Scan operations", func() {
 	var keys map[string]*Key
 
 	// use the same client for all
-	client, _ := NewClient(*host, *port)
+	client, err := NewClientWithPolicy(clientPolicy, *host, *port)
+	if err != nil {
+		panic(err)
+	}
 
 	// read all records from the channel and make sure all of them are returned
 	// if cancelCnt is set, it will cancel the scan after specified record count
@@ -52,8 +52,8 @@ var _ = Describe("Scan operations", func() {
 	L:
 		for {
 			select {
-			case rec, chanOpen := <-recordset.Records:
-				if rec == nil && !chanOpen {
+			case rec := <-recordset.Records:
+				if rec == nil {
 					break L
 				}
 				key, exists := keys[string(rec.Key.Digest())]
@@ -81,7 +81,7 @@ var _ = Describe("Scan operations", func() {
 	}
 
 	BeforeEach(func() {
-		keys = make(map[string]*Key)
+		keys = make(map[string]*Key, keyCount)
 		set = randString(50)
 		for i := 0; i < keyCount; i++ {
 			key, err := NewKey(ns, set, randString(50))
@@ -93,7 +93,35 @@ var _ = Describe("Scan operations", func() {
 		}
 	})
 
+	It("must Scan and get all records back for a specified node using Results() channel", func() {
+		Expect(len(keys)).To(Equal(keyCount))
+
+		for _, node := range client.GetNodes() {
+			recordset, err := client.ScanNode(nil, node, ns, set)
+			Expect(err).ToNot(HaveOccurred())
+
+			counter := 0
+			for res := range recordset.Results() {
+				Expect(res.Err).NotTo(HaveOccurred())
+				key, exists := keys[string(res.Record.Key.Digest())]
+
+				Expect(exists).To(Equal(true))
+				Expect(key.Value().GetObject()).To(Equal(res.Record.Key.Value().GetObject()))
+				Expect(res.Record.Bins[bin1.Name]).To(Equal(bin1.Value.GetObject()))
+				Expect(res.Record.Bins[bin2.Name]).To(Equal(bin2.Value.GetObject()))
+
+				delete(keys, string(res.Record.Key.Digest()))
+
+				counter++
+			}
+		}
+
+		Expect(len(keys)).To(Equal(0))
+	})
+
 	It("must Scan and get all records back for a specified node", func() {
+		Expect(len(keys)).To(Equal(keyCount))
+
 		for _, node := range client.GetNodes() {
 			recordset, err := client.ScanNode(nil, node, ns, set)
 			Expect(err).ToNot(HaveOccurred())
@@ -105,6 +133,8 @@ var _ = Describe("Scan operations", func() {
 	})
 
 	It("must Scan and get all records back from all nodes concurrently", func() {
+		Expect(len(keys)).To(Equal(keyCount))
+
 		recordset, err := client.ScanAll(nil, ns, set)
 		Expect(err).ToNot(HaveOccurred())
 
@@ -114,6 +144,8 @@ var _ = Describe("Scan operations", func() {
 	})
 
 	It("must Scan and get all records back from all nodes sequnetially", func() {
+		Expect(len(keys)).To(Equal(keyCount))
+
 		scanPolicy := NewScanPolicy()
 		scanPolicy.ConcurrentNodes = false
 
@@ -126,6 +158,8 @@ var _ = Describe("Scan operations", func() {
 	})
 
 	It("must Cancel Scan", func() {
+		Expect(len(keys)).To(Equal(keyCount))
+
 		recordset, err := client.ScanAll(nil, ns, set)
 		Expect(err).ToNot(HaveOccurred())
 

@@ -15,10 +15,6 @@
 package aerospike_test
 
 import (
-	"flag"
-	"math/rand"
-	"time"
-
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
@@ -26,8 +22,8 @@ import (
 )
 
 var _ = Describe("LargeStack Test", func() {
-	rand.Seed(time.Now().UnixNano())
-	flag.Parse()
+	initTestVars()
+
 	// connection data
 	var client *Client
 	var err error
@@ -37,16 +33,17 @@ var _ = Describe("LargeStack Test", func() {
 	var wpolicy = NewWritePolicy(0, 0)
 
 	BeforeEach(func() {
-		client, err = NewClient(*host, *port)
+		client, err = NewClientWithPolicy(clientPolicy, *host, *port)
 		Expect(err).ToNot(HaveOccurred())
 		key, err = NewKey(ns, set, randString(50))
 		Expect(err).ToNot(HaveOccurred())
 	})
 
-	It("should create a valid LargeStack; Support Add(), Remove(), Find(), Size(), Scan() and GetCapacity()", func() {
+	It("should create a valid LargeStack; Support Push(), Peek(), Pop(), Size(), Scan(), Destroy() and GetCapacity()", func() {
 		lstack := client.GetLargeStack(wpolicy, key, randString(10), "")
-		_, err := lstack.Size()
-		Expect(err).To(HaveOccurred()) // bin not exists
+		res, err := lstack.Size()
+		Expect(err).ToNot(HaveOccurred()) // bin not exists
+		Expect(res).To(Equal(0))
 
 		for i := 1; i <= 100; i++ {
 			err = lstack.Push(NewValue(i))
@@ -90,6 +87,13 @@ var _ = Describe("LargeStack Test", func() {
 		// 	// Expect(v).To(Equal([]interface{}{i}))
 		// }
 
+		// Destroy
+		err = lstack.Destroy()
+		Expect(err).ToNot(HaveOccurred())
+
+		scanResult, err = lstack.Scan()
+		Expect(err).ToNot(HaveOccurred())
+		Expect(len(scanResult)).To(Equal(0))
 	})
 
 	It("should correctly GetConfig()", func() {

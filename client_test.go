@@ -15,11 +15,10 @@
 package aerospike_test
 
 import (
-	"flag"
+	"bytes"
 	"math"
 	"math/rand"
 	"strings"
-	"time"
 
 	. "github.com/aerospike/aerospike-client-go"
 	. "github.com/aerospike/aerospike-client-go/utils/buffer"
@@ -30,13 +29,12 @@ import (
 
 // ALL tests are isolated by SetName and Key, which are 50 random charachters
 var _ = Describe("Aerospike", func() {
-	rand.Seed(time.Now().UnixNano())
-	flag.Parse()
+	initTestVars()
 
 	Describe("Client Management", func() {
 		It("must open and close the client without a problem", func() {
 			// use the same client for all
-			client, err := NewClient(*host, *port)
+			client, err := NewClientWithPolicy(clientPolicy, *host, *port)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(client.IsConnected()).To(BeTrue())
 
@@ -54,30 +52,18 @@ var _ = Describe("Aerospike", func() {
 		var wpolicy = NewWritePolicy(0, 0)
 		var rpolicy = NewPolicy()
 		var rec *Record
-
-		// use the same client for all
-		println(*host, *port)
-		client, err := NewClient("127.0.0.1", 3000)
+		var client *Client
 
 		BeforeEach(func() {
+			// use the same client for all
+			client, err = NewClientWithPolicy(clientPolicy, *host, *port)
+			Expect(err).ToNot(HaveOccurred())
+
 			key, err = NewKey(ns, set, randString(50))
 			Expect(err).ToNot(HaveOccurred())
 		})
 
 		Context("Put operations", func() {
-			// TODO: Resolve this - this should work like touch command
-			// It("must save a key without bins", func() {
-			// 	// bin := NewBin("dbname", "Aerospike")
-			// 	err = client.PutBins(wpolicy, key)
-			// 	Expect(err).ToNot(HaveOccurred())
-
-			// 	var exists bool
-			// 	exists, err := client.Exists(rpolicy, key)
-			// 	rec, _ := client.Get(rpolicy, key)
-			// 	fmt.Printf("%#v: %#v", key, rec)
-			// 	Expect(err).ToNot(HaveOccurred())
-			// 	Expect(exists).To(Equal(true))
-			// })
 
 			Context("Bins with `nil` values should be deleted", func() {
 				It("must save a key with SINGLE bin", func() {
@@ -323,7 +309,7 @@ var _ = Describe("Aerospike", func() {
 						bin6 := NewBin("Aerospike6", []uint16{0, 1, 2, 3, math.MaxUint16})
 						bin7 := NewBin("Aerospike7", []uint32{0, 1, 2, 3, math.MaxUint32})
 						bin8 := NewBin("Aerospike8", []string{"", "\n", "string"})
-						bin9 := NewBin("Aerospike9", []interface{}{"", 1, nil})
+						bin9 := NewBin("Aerospike9", []interface{}{"", 1, nil, true, false, uint64(math.MaxUint64), math.MaxFloat32, math.MaxFloat64})
 
 						// complex type, consisting different arrays
 						bin10 := NewBin("Aerospike10", []interface{}{
@@ -338,12 +324,19 @@ var _ = Describe("Aerospike", func() {
 							bin8.Value.GetObject(),
 							bin9.Value.GetObject(),
 							map[interface{}]interface{}{
-								15:                   nil,
-								int8(math.MaxInt8):   int8(math.MaxInt8),
-								int64(math.MinInt64): int64(math.MinInt64),
-								int64(math.MaxInt64): int64(math.MaxInt64),
-								"string":             map[interface{}]interface{}{nil: "string", "string": 19}, // map to complex array
-								nil:                  []int{18, 41},                                            // array to complex map
+								15:                        nil,
+								int8(math.MaxInt8):        int8(math.MaxInt8),
+								int64(math.MinInt64):      int64(math.MinInt64),
+								int64(math.MaxInt64):      int64(math.MaxInt64),
+								uint64(math.MaxUint64):    uint64(math.MaxUint64),
+								float32(-math.MaxFloat32): float32(-math.MaxFloat32),
+								float64(-math.MaxFloat64): float64(-math.MaxFloat64),
+								float32(math.MaxFloat32):  float32(math.MaxFloat32),
+								float64(math.MaxFloat64):  float64(math.MaxFloat64),
+								"true":   true,
+								"false":  false,
+								"string": map[interface{}]interface{}{nil: "string", "string": 19}, // map to complex array
+								nil:      []int{18, 41},                                            // array to complex map
 							},
 						})
 
@@ -378,12 +371,20 @@ var _ = Describe("Aerospike", func() {
 						})
 
 						bin2 := NewBin("Aerospike2", map[interface{}]interface{}{
-							15:                   nil,
-							int8(math.MaxInt8):   int8(math.MaxInt8),
-							int64(math.MinInt64): int64(math.MinInt64),
-							int64(math.MaxInt64): int64(math.MaxInt64),
-							"string":             map[interface{}]interface{}{nil: "string", "string": 19}, // map to complex array
-							nil:                  []int{18, 41},                                            // array to complex map
+							15:                        nil,
+							"true":                    true,
+							"false":                   false,
+							int8(math.MaxInt8):        int8(math.MaxInt8),
+							int64(math.MinInt64):      int64(math.MinInt64),
+							int64(math.MaxInt64):      int64(math.MaxInt64),
+							uint64(math.MaxUint64):    uint64(math.MaxUint64),
+							float32(-math.MaxFloat32): float32(-math.MaxFloat32),
+							float64(-math.MaxFloat64): float64(-math.MaxFloat64),
+							float32(math.MaxFloat32):  float32(math.MaxFloat32),
+							float64(math.MaxFloat64):  float64(math.MaxFloat64),
+							"string":                  map[interface{}]interface{}{nil: "string", "string": 19}, // map to complex array
+							nil:                       []int{18, 41},                                            // array to complex map
+							"longString":              strings.Repeat("s", 32911),                               // bit-sign test
 						})
 
 						err = client.PutBins(wpolicy, key, bin1, bin2)
@@ -546,12 +547,25 @@ var _ = Describe("Aerospike", func() {
 				Expect(err).ToNot(HaveOccurred())
 				generation := rec.Generation
 
+				wpolicy := NewWritePolicy(0, 0)
+				wpolicy.SendKey = true
 				err = client.Touch(wpolicy, key)
 				Expect(err).ToNot(HaveOccurred())
 
 				rec, err = client.Get(rpolicy, key)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(rec.Generation).To(Equal(generation + 1))
+
+				recordset, err := client.ScanAll(nil, key.Namespace(), key.SetName())
+				Expect(err).ToNot(HaveOccurred())
+
+				// make sure the
+				for r := range recordset.Records {
+					if bytes.Equal(key.Digest(), r.Key.Digest()) {
+						Expect(r.Key.Value()).To(Equal(key.Value()))
+						Expect(r.Bins).To(Equal(rec.Bins))
+					}
+				}
 			})
 
 		}) // Touch context
@@ -771,6 +785,77 @@ var _ = Describe("Aerospike", func() {
 				// Expect(err).ToNot(HaveOccurred())
 			})
 
+			It("must send key on Put operations", func() {
+				key, err := NewKey(ns, set, randString(50))
+				Expect(err).ToNot(HaveOccurred())
+
+				ops1 := []*Operation{
+					GetOp(),
+					PutOp(bin1),
+					PutOp(bin2),
+				}
+
+				wpolicy := NewWritePolicy(0, 0)
+				wpolicy.SendKey = true
+				rec, err = client.Operate(wpolicy, key, ops1...)
+				Expect(err).ToNot(HaveOccurred())
+
+				recordset, err := client.ScanAll(nil, key.Namespace(), key.SetName())
+				Expect(err).ToNot(HaveOccurred())
+
+				// make sure the
+				for r := range recordset.Records {
+					if bytes.Equal(key.Digest(), r.Key.Digest()) {
+						Expect(r.Key.Value()).To(Equal(key.Value()))
+						Expect(r.Bins).To(Equal(rec.Bins))
+					}
+				}
+			})
+
+			It("must send key on Touch operations", func() {
+				key, err := NewKey(ns, set, randString(50))
+				Expect(err).ToNot(HaveOccurred())
+
+				ops1 := []*Operation{
+					GetOp(),
+					PutOp(bin2),
+				}
+
+				wpolicy := NewWritePolicy(0, 0)
+				wpolicy.SendKey = false
+				rec, err = client.Operate(wpolicy, key, ops1...)
+				Expect(err).ToNot(HaveOccurred())
+
+				recordset, err := client.ScanAll(nil, key.Namespace(), key.SetName())
+				Expect(err).ToNot(HaveOccurred())
+
+				// make sure the key is not saved
+				for r := range recordset.Records {
+					if bytes.Equal(key.Digest(), r.Key.Digest()) {
+						Expect(r.Key.Value()).To(BeNil())
+					}
+				}
+
+				ops2 := []*Operation{
+					GetOp(),
+					TouchOp(),
+				}
+				wpolicy.SendKey = true
+				rec, err = client.Operate(wpolicy, key, ops2...)
+				Expect(err).ToNot(HaveOccurred())
+
+				recordset, err = client.ScanAll(nil, key.Namespace(), key.SetName())
+				Expect(err).ToNot(HaveOccurred())
+
+				// make sure the
+				for r := range recordset.Records {
+					if bytes.Equal(key.Digest(), r.Key.Digest()) {
+						Expect(r.Key.Value()).To(Equal(key.Value()))
+						Expect(r.Bins).To(Equal(rec.Bins))
+					}
+				}
+			})
+
 			It("must apply all operations, and result should match expectation", func() {
 				key, err := NewKey(ns, set, randString(50))
 				Expect(err).ToNot(HaveOccurred())
@@ -824,6 +909,19 @@ var _ = Describe("Aerospike", func() {
 				Expect(err).ToNot(HaveOccurred())
 
 				Expect(rec.Generation).To(Equal(4))
+				Expect(len(rec.Bins)).To(Equal(0))
+
+				// GetOp should override GetHEaderOp
+				ops5 := []*Operation{
+					GetOp(),
+					GetHeaderOp(),
+				}
+
+				rec, err = client.Operate(nil, key, ops5...)
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(rec.Generation).To(Equal(4))
+				Expect(len(rec.Bins)).To(Equal(2))
 			})
 
 		}) // GetHeader context

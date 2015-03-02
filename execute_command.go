@@ -15,7 +15,7 @@
 package aerospike
 
 type executeCommand struct {
-	readCommand
+	*readCommand
 
 	packageName  string
 	functionName string
@@ -31,7 +31,7 @@ func newExecuteCommand(
 	args []Value,
 ) *executeCommand {
 	return &executeCommand{
-		readCommand:  *newReadCommand(cluster, policy, key, nil),
+		readCommand:  newReadCommand(cluster, policy, key, nil),
 		packageName:  packageName,
 		functionName: functionName,
 		args:         args,
@@ -39,7 +39,7 @@ func newExecuteCommand(
 }
 
 func (cmd *executeCommand) writeBuffer(ifc command) error {
-	return cmd.setUdf(cmd.key, cmd.packageName, cmd.functionName, cmd.args)
+	return cmd.setUdf(cmd.policy, cmd.key, cmd.packageName, cmd.functionName, cmd.args)
 }
 
 func (cmd *executeCommand) Execute() error {

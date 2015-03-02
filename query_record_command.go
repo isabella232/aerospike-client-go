@@ -17,17 +17,18 @@ package aerospike
 import (
 
 	// . "github.com/aerospike/aerospike-client-go/logger"
+
 	. "github.com/aerospike/aerospike-client-go/types"
 	Buffer "github.com/aerospike/aerospike-client-go/utils/buffer"
 )
 
 type queryRecordCommand struct {
-	queryCommand
+	*queryCommand
 }
 
-func newQueryRecordCommand(node *Node, policy *QueryPolicy, statement *Statement, recChan chan *Record, errChan chan error) *queryRecordCommand {
+func newQueryRecordCommand(node *Node, policy *QueryPolicy, statement *Statement, recordset *Recordset) *queryRecordCommand {
 	return &queryRecordCommand{
-		queryCommand: *newQueryCommand(node, policy, statement, recChan, errChan),
+		queryCommand: newQueryCommand(node, policy, statement, recordset),
 	}
 }
 
@@ -37,7 +38,7 @@ func (cmd *queryRecordCommand) parseRecordResults(ifc command, receiveSize int) 
 
 	for cmd.dataOffset < receiveSize {
 		if err := cmd.readBytes(int(_MSG_REMAINING_HEADER_SIZE)); err != nil {
-			cmd.Errors <- newNodeError(cmd.node, err)
+			cmd.recordset.Errors <- newNodeError(cmd.node, err)
 			return false, err
 		}
 		resultCode := ResultCode(cmd.dataBuffer[5] & 0xFF)
@@ -47,7 +48,7 @@ func (cmd *queryRecordCommand) parseRecordResults(ifc command, receiveSize int) 
 				return false, nil
 			}
 			err := NewAerospikeError(resultCode)
-			cmd.Errors <- newNodeError(cmd.node, err)
+			cmd.recordset.Errors <- newNodeError(cmd.node, err)
 			return false, err
 		}
 
@@ -58,14 +59,14 @@ func (cmd *queryRecordCommand) parseRecordResults(ifc command, receiveSize int) 
 			return false, nil
 		}
 
-		generation := int(Buffer.BytesToInt32(cmd.dataBuffer, 6))
-		expiration := int(Buffer.BytesToInt32(cmd.dataBuffer, 10))
-		fieldCount := int(Buffer.BytesToInt16(cmd.dataBuffer, 18))
-		opCount := int(Buffer.BytesToInt16(cmd.dataBuffer, 20))
+		generation := int(uint32(Buffer.BytesToInt32(cmd.dataBuffer, 6)))
+		expiration := TTL(int(uint32(Buffer.BytesToInt32(cmd.dataBuffer, 10))))
+		fieldCount := int(uint16(Buffer.BytesToInt16(cmd.dataBuffer, 18)))
+		opCount := int(uint16(Buffer.BytesToInt16(cmd.dataBuffer, 20)))
 
 		key, err := cmd.parseKey(fieldCount)
 		if err != nil {
-			cmd.Errors <- newNodeError(cmd.node, err)
+			cmd.recordset.Errors <- newNodeError(cmd.node, err)
 			return false, err
 		}
 
@@ -74,28 +75,28 @@ func (cmd *queryRecordCommand) parseRecordResults(ifc command, receiveSize int) 
 
 		for i := 0; i < opCount; i++ {
 			if err := cmd.readBytes(8); err != nil {
-				cmd.Errors <- newNodeError(cmd.node, err)
+				cmd.recordset.Errors <- newNodeError(cmd.node, err)
 				return false, err
 			}
 
-			opSize := int(Buffer.BytesToInt32(cmd.dataBuffer, 0))
+			opSize := int(uint32(Buffer.BytesToInt32(cmd.dataBuffer, 0)))
 			particleType := int(cmd.dataBuffer[5])
 			nameSize := int(cmd.dataBuffer[7])
 
 			if err := cmd.readBytes(nameSize); err != nil {
-				cmd.Errors <- newNodeError(cmd.node, err)
+				cmd.recordset.Errors <- newNodeError(cmd.node, err)
 				return false, err
 			}
 			name := string(cmd.dataBuffer[:nameSize])
 
 			particleBytesSize := int((opSize - (4 + nameSize)))
 			if err = cmd.readBytes(particleBytesSize); err != nil {
-				cmd.Errors <- newNodeError(cmd.node, err)
+				cmd.recordset.Errors <- newNodeError(cmd.node, err)
 				return false, err
 			}
 			value, err := bytesToParticle(particleType, cmd.dataBuffer, 0, particleBytesSize)
 			if err != nil {
-				cmd.Errors <- newNodeError(cmd.node, err)
+				cmd.recordset.Errors <- newNodeError(cmd.node, err)
 				return false, err
 			}
 
@@ -105,18 +106,20 @@ func (cmd *queryRecordCommand) parseRecordResults(ifc command, receiveSize int) 
 			bins[name] = value
 		}
 
-		record := newRecord(cmd.node, key, bins, nil, generation, expiration)
-
-		if !cmd.IsValid() {
-			return false, NewAerospikeError(QUERY_TERMINATED)
+		// If the channel is full and it blocks, we don't want this command to
+		// block forever, or panic in case the channel is closed in the meantime.
+		select {
+		// send back the result on the async channel
+		case cmd.recordset.Records <- newRecord(cmd.node, key, bins, generation, expiration):
+		case <-cmd.recordset.cancelled:
+			return false, NewAerospikeError(SCAN_TERMINATED)
 		}
-
-		cmd.Records <- record
 	}
 
 	return true, nil
 }
 
 func (cmd *queryRecordCommand) Execute() error {
+	defer cmd.recordset.signalEnd()
 	return cmd.execute(cmd)
 }

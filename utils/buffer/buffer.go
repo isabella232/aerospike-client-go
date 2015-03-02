@@ -19,21 +19,33 @@ import (
 	// "errors"
 	"fmt"
 	"math"
-	"unsafe"
 
 	// . "github.com/aerospike/aerospike-client-go/logger"
 )
 
-var sizeOfInt = unsafe.Sizeof(int(0))
-var sizeOfInt32 = unsafe.Sizeof(int32(0))
-var sizeOfInt64 = unsafe.Sizeof(int64(0))
+var sizeOfInt uintptr
+var sizeOfInt32 = uintptr(4)
+var sizeOfInt64 = uintptr(8)
 
-var uint64sz = int(unsafe.Sizeof(uint64(0)))
-var uint32sz = int(unsafe.Sizeof(uint32(0)))
-var uint16sz = int(unsafe.Sizeof(uint16(0)))
+var uint64sz = int(8)
+var uint32sz = int(4)
+var uint16sz = int(2)
 
-var Arch64Bits = (sizeOfInt == sizeOfInt64)
-var Arch32Bits = (sizeOfInt == sizeOfInt32)
+var float32sz = int(4)
+var float64sz = int(8)
+
+var Arch64Bits bool
+var Arch32Bits bool
+
+func init() {
+	if 0 == ^uint(0xffffffff) {
+		sizeOfInt = 4
+	} else {
+		sizeOfInt = 8
+	}
+	Arch64Bits = (sizeOfInt == sizeOfInt64)
+	Arch32Bits = (sizeOfInt == sizeOfInt32)
+}
 
 // Coverts a byte slice into a hex string
 func BytesToHexString(buf []byte) string {
@@ -42,7 +54,7 @@ func BytesToHexString(buf []byte) string {
 	for i := range buf {
 		hex := fmt.Sprintf("%02x ", buf[i])
 		idx := i * 3
-		copy(hlist[idx:], []byte(hex))
+		copy(hlist[idx:], hex)
 	}
 	return string(hlist)
 }
@@ -69,7 +81,7 @@ func BytesToNumber(buf []byte, offset, length int) interface{} {
 	return int64(val)
 }
 
-// Covertes a slice into int64; only maximum of 8 bytes will be used
+// Covertes a slice into int32; only maximum of 4 bytes will be used
 func LittleBytesToInt32(buf []byte, offset int) int32 {
 	l := len(buf[offset:])
 	if l > uint32sz {
@@ -139,6 +151,40 @@ func Int16ToBytes(num int16, buffer []byte, offset int) []byte {
 	b := make([]byte, uint16sz)
 	binary.BigEndian.PutUint16(b, uint16(num))
 	return b
+}
+
+func BytesToFloat32(buf []byte, offset int) float32 {
+	bits := binary.BigEndian.Uint32(buf[offset : offset+float32sz])
+	return math.Float32frombits(bits)
+}
+
+func Float32ToBytes(float float32, buffer []byte, offset int) []byte {
+	bits := math.Float32bits(float)
+	if buffer != nil {
+		binary.BigEndian.PutUint32(buffer[offset:], bits)
+		return nil
+	}
+
+	bytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(bytes, bits)
+	return bytes
+}
+
+func BytesToFloat64(buf []byte, offset int) float64 {
+	bits := binary.BigEndian.Uint64(buf[offset : offset+float64sz])
+	return math.Float64frombits(bits)
+}
+
+func Float64ToBytes(float float64, buffer []byte, offset int) []byte {
+	bits := math.Float64bits(float)
+	if buffer != nil {
+		binary.BigEndian.PutUint64(buffer[offset:], bits)
+		return nil
+	}
+
+	bytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(bytes, bits)
+	return bytes
 }
 
 func GetUnsigned(b byte) int {

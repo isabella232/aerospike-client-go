@@ -26,21 +26,8 @@ import (
 	. "github.com/aerospike/aerospike-client-go/types/atomic"
 )
 
-type tendCommand int
-
-const (
-	_TEND_CMD_CLOSE tendCommand = iota
-	_TEND_MSG_CLOSED
-)
-
-const (
-	tendInterval = 1 * time.Second
-)
-
-type atomicNodeArray struct {
-	AtomicArray
-}
-
+// Cluster encapsulates the aerospike cluster nodes and manages
+// them.
 type Cluster struct {
 	// Initial host nodes specified by user.
 	seeds []*Host
@@ -52,7 +39,7 @@ type Cluster struct {
 	nodes []*Node
 
 	// Hints for best node for a partition
-	partitionWriteMap map[string]*atomicNodeArray
+	partitionWriteMap map[string][]*Node
 
 	// Random node index.
 	nodeIndex *AtomicInt
@@ -64,20 +51,37 @@ type Cluster struct {
 	connectionTimeout time.Duration
 
 	mutex       sync.RWMutex
-	tendChannel chan tendCommand
+	wgTend      sync.WaitGroup
+	tendChannel chan struct{}
 	closed      AtomicBool
+
+	// User name in UTF-8 encoded bytes.
+	user string
+
+	// Password in hashed format in bytes.
+	password []byte
 }
 
+// NewCluster generates a Cluster instance.
 func NewCluster(policy *ClientPolicy, hosts []*Host) (*Cluster, error) {
 	newCluster := &Cluster{
 		seeds:               hosts,
 		connectionQueueSize: policy.ConnectionQueueSize,
-		connectionTimeout:   policy.timeout(),
+		connectionTimeout:   policy.Timeout,
 		aliases:             make(map[Host]*Node),
 		nodes:               []*Node{},
-		partitionWriteMap:   make(map[string]*atomicNodeArray),
+		partitionWriteMap:   make(map[string][]*Node),
 		nodeIndex:           NewAtomicInt(0),
-		tendChannel:         make(chan tendCommand),
+		tendChannel:         make(chan struct{}),
+	}
+
+	// setup auth info for cluster
+	var err error
+	if policy.RequiresAuthentication() {
+		newCluster.user = policy.User
+		if newCluster.password, err = hashPassword(policy.Password); err != nil {
+			return nil, err
+		}
 	}
 
 	// try to seed connections for first use
@@ -89,7 +93,8 @@ func NewCluster(policy *ClientPolicy, hosts []*Host) (*Cluster, error) {
 	}
 
 	// start up cluster maintenance go routine
-	go newCluster.clusterBoss()
+	newCluster.wgTend.Add(1)
+	go newCluster.clusterBoss(policy)
 
 	Logger.Debug("New cluster initialized and ready to be used...")
 	return newCluster, nil
@@ -97,16 +102,20 @@ func NewCluster(policy *ClientPolicy, hosts []*Host) (*Cluster, error) {
 
 // Maintains the cluster on intervals.
 // All clean up code for cluster is here as well.
-func (clstr *Cluster) clusterBoss() {
+func (clstr *Cluster) clusterBoss(policy *ClientPolicy) {
+	defer clstr.wgTend.Done()
+
+	tendInterval := policy.TendInterval
+	if tendInterval <= 10*time.Millisecond {
+		tendInterval = 10 * time.Millisecond
+	}
 
 Loop:
 	for {
 		select {
-		case cmd := <-clstr.tendChannel:
-			switch cmd {
-			case _TEND_CMD_CLOSE:
-				break Loop
-			}
+		case <-clstr.tendChannel:
+			// tend channel closed
+			break Loop
 		case <-time.After(tendInterval):
 			if err := clstr.tend(); err != nil {
 				Logger.Warn(err.Error())
@@ -122,22 +131,20 @@ Loop:
 	for _, node := range nodeArray {
 		node.Close()
 	}
-
-	clstr.tendChannel <- _TEND_MSG_CLOSED
 }
 
-// Adds new hosts to the cluster
-// They will be added to the cluster on next tend
+// AddSeeds adds new hosts to the cluster.
+// They will be added to the cluster on next tend call.
 func (clstr *Cluster) AddSeeds(hosts []*Host) {
 	clstr.mutex.Lock()
-	defer clstr.mutex.Unlock()
 	clstr.seeds = append(clstr.seeds, hosts...)
+	clstr.mutex.Unlock()
 }
 
 func (clstr *Cluster) getSeeds() []*Host {
 	clstr.mutex.RLock()
-	defer clstr.mutex.RUnlock()
 	seeds := clstr.seeds
+	clstr.mutex.RUnlock()
 	return seeds
 }
 
@@ -236,27 +243,28 @@ func (clstr *Cluster) waitTillStabilized() {
 
 func (clstr *Cluster) findAlias(alias *Host) *Node {
 	clstr.mutex.RLock()
-	defer clstr.mutex.RUnlock()
-	return clstr.aliases[*alias]
+	nd := clstr.aliases[*alias]
+	clstr.mutex.RUnlock()
+	return nd
 }
 
-func (clstr *Cluster) setPartitions(partMap map[string]*atomicNodeArray) {
+func (clstr *Cluster) setPartitions(partMap map[string][]*Node) {
 	clstr.mutex.Lock()
-	defer clstr.mutex.Unlock()
 	clstr.partitionWriteMap = partMap
+	clstr.mutex.Unlock()
 }
 
-func (clstr *Cluster) getPartitions() map[string]*atomicNodeArray {
+func (clstr *Cluster) getPartitions() map[string][]*Node {
 	clstr.mutex.RLock()
-	defer clstr.mutex.RUnlock()
-	partMap := clstr.partitionWriteMap
-	return partMap
+	res := clstr.partitionWriteMap
+	clstr.mutex.RUnlock()
+	return res
 }
 
 func (clstr *Cluster) updatePartitions(conn *Connection, node *Node) error {
 	// TODO: Cluster should not care about version of tokenizer
 	// decouple clstr interface
-	var nmap map[string]*atomicNodeArray
+	var nmap map[string][]*Node
 	if node.useNewInfo {
 		Logger.Info("Updating partitions using new protocol...")
 		tokens, err := newPartitionTokenizerNew(conn)
@@ -299,7 +307,7 @@ func (clstr *Cluster) seedNodes() {
 	list := []*Node{}
 
 	for _, seed := range seedArray {
-		seedNodeValidator, err := newNodeValidator(seed, clstr.connectionTimeout)
+		seedNodeValidator, err := newNodeValidator(clstr, seed, clstr.connectionTimeout)
 		if err != nil {
 			Logger.Warn("Seed %s failed: %s", seed.String(), err.Error())
 			continue
@@ -312,14 +320,14 @@ func (clstr *Cluster) seedNodes() {
 			if *alias == *seed {
 				nv = seedNodeValidator
 			} else {
-				nv, err = newNodeValidator(alias, clstr.connectionTimeout)
+				nv, err = newNodeValidator(clstr, alias, clstr.connectionTimeout)
 				if err != nil {
 					Logger.Warn("Seed %s failed: %s", seed.String(), err.Error())
 					continue
 				}
 			}
 
-			if !clstr.FindNodeName(list, nv.name) {
+			if !clstr.findNodeName(list, nv.name) {
 				node := clstr.createNode(nv)
 				clstr.addAliases(node)
 				list = append(list, node)
@@ -332,9 +340,8 @@ func (clstr *Cluster) seedNodes() {
 	}
 }
 
-// FIXIT: This function is not well desined while it is expoted.
 // Finds a node by name in a list of nodes
-func (clstr *Cluster) FindNodeName(list []*Node, name string) bool {
+func (clstr *Cluster) findNodeName(list []*Node, name string) bool {
 	for _, node := range list {
 		if node.GetName() == name {
 			return true
@@ -346,16 +353,16 @@ func (clstr *Cluster) FindNodeName(list []*Node, name string) bool {
 func (clstr *Cluster) addAlias(host *Host, node *Node) {
 	if host != nil && node != nil {
 		clstr.mutex.Lock()
-		defer clstr.mutex.Unlock()
 		clstr.aliases[*host] = node
+		clstr.mutex.Unlock()
 	}
 }
 
 func (clstr *Cluster) removeAlias(alias *Host) {
 	if alias != nil {
 		clstr.mutex.Lock()
-		defer clstr.mutex.Unlock()
 		delete(clstr.aliases, *alias)
+		clstr.mutex.Unlock()
 	}
 }
 
@@ -363,7 +370,7 @@ func (clstr *Cluster) findNodesToAdd(hosts []*Host) []*Node {
 	list := make([]*Node, 0, len(hosts))
 
 	for _, host := range hosts {
-		if nv, err := newNodeValidator(host, clstr.connectionTimeout); err != nil {
+		if nv, err := newNodeValidator(clstr, host, clstr.connectionTimeout); err != nil {
 			Logger.Warn("Add node %s failed: %s", err.Error())
 		} else {
 			node := clstr.findNodeByName(nv.name)
@@ -419,7 +426,7 @@ func (clstr *Cluster) findNodesToRemove(refreshCount int) []*Node {
 
 		case 2:
 			// Two node clusters require at least one successful refresh before removing.
-			if refreshCount == 1 && node.referenceCount == 0 && !node.responded {
+			if node.refreshCount > 0 && refreshCount == 1 && node.referenceCount == 0 && !node.responded {
 				// Node is not referenced nor did it respond.
 				removeList = append(removeList, node)
 			}
@@ -449,11 +456,11 @@ func (clstr *Cluster) findNodesToRemove(refreshCount int) []*Node {
 func (clstr *Cluster) findNodeInPartitionMap(filter *Node) bool {
 	partitions := clstr.getPartitions()
 
-	for _, nodeArray := range partitions {
-		max := nodeArray.Length()
+	for j := range partitions {
+		max := len(partitions[j])
 
 		for i := 0; i < max; i++ {
-			node := nodeArray.Get(i)
+			node := partitions[j][i]
 			// Use reference equality for performance.
 			if node == filter {
 				return true
@@ -481,8 +488,8 @@ func (clstr *Cluster) addAliases(node *Node) {
 
 func (clstr *Cluster) addNodesCopy(nodesToAdd []*Node) {
 	clstr.mutex.Lock()
-	defer clstr.mutex.Unlock()
 	clstr.nodes = append(clstr.nodes, nodesToAdd...)
+	clstr.mutex.Unlock()
 }
 
 func (clstr *Cluster) removeNodes(nodesToRemove []*Node) {
@@ -507,9 +514,9 @@ func (clstr *Cluster) removeNodes(nodesToRemove []*Node) {
 
 func (clstr *Cluster) setNodes(nodes []*Node) {
 	clstr.mutex.Lock()
-	defer clstr.mutex.Unlock()
 	// Replace nodes with copy.
 	clstr.nodes = nodes
+	clstr.mutex.Unlock()
 }
 
 func (clstr *Cluster) removeNodesCopy(nodesToRemove []*Node) {
@@ -553,33 +560,35 @@ func (clstr *Cluster) nodeExists(search *Node, nodeList []*Node) bool {
 	return false
 }
 
+// IsConnected returns true if cluster has nodes and is not already closed.
 func (clstr *Cluster) IsConnected() bool {
 	// Must copy array reference for copy on write semantics to work.
 	nodeArray := clstr.GetNodes()
 	return (len(nodeArray) > 0) && !clstr.closed.Get()
 }
 
+// GetNode returns a node for the provided partition.
 func (clstr *Cluster) GetNode(partition *Partition) (*Node, error) {
 	// Must copy hashmap reference for copy on write semantics to work.
 	nmap := clstr.getPartitions()
 	if nodeArray, exists := nmap[partition.Namespace]; exists {
-		node := nodeArray.Get(partition.PartitionId)
+		node := nodeArray[partition.PartitionId]
 
-		if node != nil && node.(*Node).IsActive() {
-			return node.(*Node), nil
+		if node != nil && node.IsActive() {
+			return node, nil
 		}
 	}
 	return clstr.GetRandomNode()
 }
 
-// Returns a random node on the cluster
+// GetRandomNode returns a random node on the cluster
 func (clstr *Cluster) GetRandomNode() (*Node, error) {
 	// Must copy array reference for copy on write semantics to work.
 	nodeArray := clstr.GetNodes()
 	length := len(nodeArray)
 	for i := 0; i < length; i++ {
 		// Must handle concurrency with other non-tending goroutines, so nodeIndex is consistent.
-		index := int(math.Abs(float64(clstr.nodeIndex.GetAndIncrement() % len(nodeArray))))
+		index := int(math.Abs(float64(clstr.nodeIndex.GetAndIncrement() % length)))
 		node := nodeArray[index]
 
 		if node.IsActive() {
@@ -590,16 +599,17 @@ func (clstr *Cluster) GetRandomNode() (*Node, error) {
 	return nil, NewAerospikeError(INVALID_NODE_ERROR)
 }
 
-// Returns a list of all nodes in the cluster
+// GetNodes returns a list of all nodes in the cluster
 func (clstr *Cluster) GetNodes() []*Node {
 	clstr.mutex.RLock()
-	defer clstr.mutex.RUnlock()
 	// Must copy array reference for copy on write semantics to work.
 	nodeArray := clstr.nodes
+	clstr.mutex.RUnlock()
 	return nodeArray
 }
 
-// Find a node by name and returns an error if not found
+// GetNodeByName finds a node by name and returns an
+// error if the node is not found.
 func (clstr *Cluster) GetNodeByName(nodeName string) (*Node, error) {
 	node := clstr.findNodeByName(nodeName)
 
@@ -621,21 +631,22 @@ func (clstr *Cluster) findNodeByName(nodeName string) *Node {
 	return nil
 }
 
-// Closes all cached connections to the cluster nodes and stops the tend goroutine
+// Close closes all cached connections to the cluster nodes
+// and stops the tend goroutine.
 func (clstr *Cluster) Close() {
 	if !clstr.closed.Get() {
 		// send close signal to maintenance channel
-		clstr.tendChannel <- _TEND_CMD_CLOSE
+		close(clstr.tendChannel)
 
-		// wait until tendChannel returns
-		<-clstr.tendChannel
+		// wait until tend is over
+		clstr.wgTend.Wait()
 	}
 }
 
 // MigrationInProgress determines if any node in the cluster
 // is participating in a data migration
 func (clstr *Cluster) MigrationInProgress(timeout time.Duration) (res bool, err error) {
-	if timeout > _DEFAULT_TIMEOUT {
+	if timeout <= 0 {
 		timeout = _DEFAULT_TIMEOUT
 	}
 
@@ -668,7 +679,12 @@ func (clstr *Cluster) MigrationInProgress(timeout time.Duration) (res bool, err 
 	}
 }
 
+// WaitUntillMigrationIsFinished will block until all
+// migration operations in the cluster all finished.
 func (clstr *Cluster) WaitUntillMigrationIsFinished(timeout time.Duration) (err error) {
+	if timeout <= 0 {
+		timeout = _NO_TIMEOUT
+	}
 	done := make(chan error)
 
 	go func() {
@@ -688,5 +704,12 @@ func (clstr *Cluster) WaitUntillMigrationIsFinished(timeout time.Duration) (err 
 		return NewAerospikeError(TIMEOUT)
 	case err = <-done:
 		return err
+	}
+}
+
+func (clstr *Cluster) changePassword(user string, password []byte) {
+	// change password ONLY if the user is the same
+	if clstr.user == user {
+		clstr.password = password
 	}
 }

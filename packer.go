@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"time"
 
 	ParticleType "github.com/aerospike/aerospike-client-go/types/particle_type"
 	Buffer "github.com/aerospike/aerospike-client-go/utils/buffer"
@@ -57,7 +58,7 @@ func packAnyMap(val map[interface{}]interface{}) ([]byte, error) {
 
 func newPacker() *packer {
 	p := &packer{
-		buffer: bytes.NewBuffer(nil),
+		buffer: bytes.NewBuffer(make([]byte, 0, 256)),
 	}
 
 	return p
@@ -65,8 +66,8 @@ func newPacker() *packer {
 
 func (pckr *packer) packValueArray(values []Value) error {
 	pckr.PackArrayBegin(len(values))
-	for _, value := range values {
-		if err := value.pack(pckr); err != nil {
+	for i := range values {
+		if err := values[i].pack(pckr); err != nil {
 			return err
 		}
 	}
@@ -75,8 +76,8 @@ func (pckr *packer) packValueArray(values []Value) error {
 
 func (pckr *packer) PackList(list []interface{}) error {
 	pckr.PackArrayBegin(len(list))
-	for _, obj := range list {
-		if err := pckr.PackObject(obj); err != nil {
+	for i := range list {
+		if err := pckr.PackObject(list[i]); err != nil {
 			return err
 		}
 	}
@@ -133,69 +134,100 @@ func (pckr *packer) PackByteArrayBegin(length int) {
 }
 
 func (pckr *packer) PackObject(obj interface{}) error {
-	switch obj.(type) {
+	switch v := obj.(type) {
 	case Value:
-		return obj.(Value).pack(pckr)
+		return v.pack(pckr)
 	case string:
-		pckr.PackString(obj.(string))
+		pckr.PackString(v)
 		return nil
 	case []byte:
 		pckr.PackBytes(obj.([]byte))
 		return nil
 	case int8:
-		pckr.PackAInt(int(obj.(int8)))
+		pckr.PackAInt(int(v))
 		return nil
 	case uint8:
-		pckr.PackAInt(int(obj.(uint8)))
+		pckr.PackAInt(int(v))
 		return nil
 	case int16:
-		pckr.PackAInt(int(obj.(int16)))
+		pckr.PackAInt(int(v))
 		return nil
 	case uint16:
-		pckr.PackAInt(int(obj.(uint16)))
+		pckr.PackAInt(int(v))
 		return nil
 	case int32:
-		pckr.PackAInt(int(obj.(int32)))
+		pckr.PackAInt(int(v))
 		return nil
 	case uint32:
-		pckr.PackAInt(int(obj.(uint32)))
+		pckr.PackAInt(int(v))
 		return nil
 	case int:
 		if Buffer.Arch32Bits {
-			pckr.PackAInt(obj.(int))
+			pckr.PackAInt(v)
 			return nil
 		}
-		pckr.PackALong(int64(obj.(int)))
+		pckr.PackALong(int64(v))
 		return nil
 	case uint:
 		if Buffer.Arch32Bits {
-			pckr.PackAInt(int(obj.(uint)))
+			pckr.PackAInt(int(v))
 			return nil
 		}
-		pckr.PackAULong(obj.(uint64))
+		pckr.PackAULong(uint64(v))
 	case int64:
-		pckr.PackALong(obj.(int64))
+		pckr.PackALong(v)
 		return nil
 	case uint64:
-		pckr.PackAULong(obj.(uint64))
+		pckr.PackAULong(v)
+		return nil
+	case time.Time:
+		pckr.PackALong(v.UnixNano())
 		return nil
 	case nil:
 		pckr.PackNil()
 		return nil
+	case bool:
+		pckr.PackBool(v)
+		return nil
+	case float32:
+		pckr.PackFloat32(v)
+		return nil
+	case float64:
+		pckr.PackFloat64(v)
+		return nil
+	case []interface{}:
+		return pckr.PackList(obj.([]interface{}))
+	case map[interface{}]interface{}:
+		return pckr.PackMap(obj.(map[interface{}]interface{}))
 	}
 
 	// check for array and map
+	rv := reflect.ValueOf(obj)
 	switch reflect.TypeOf(obj).Kind() {
 	case reflect.Array, reflect.Slice:
-		s := reflect.ValueOf(obj)
-		l := s.Len()
+		l := rv.Len()
 		arr := make([]interface{}, l)
 		for i := 0; i < l; i++ {
-			arr[i] = s.Index(i).Interface()
+			arr[i] = rv.Index(i).Interface()
 		}
 		return pckr.PackList(arr)
 	case reflect.Map:
-		return pckr.PackMap(obj.(map[interface{}]interface{}))
+		l := rv.Len()
+		amap := make(map[interface{}]interface{}, l)
+		for _, i := range rv.MapKeys() {
+			amap[i.Interface()] = rv.MapIndex(i).Interface()
+		}
+		return pckr.PackMap(amap)
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return pckr.PackObject(rv.Int())
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return pckr.PackObject(rv.Uint())
+	case reflect.Bool:
+		return pckr.PackObject(rv.Bool())
+	case reflect.String:
+		return pckr.PackObject(rv.String())
+	case reflect.Float32, reflect.Float64:
+		return pckr.PackObject(rv.Float())
 	}
 
 	panic(fmt.Sprintf("Type `%v` not supported to pack.", reflect.TypeOf(obj)))
@@ -229,7 +261,7 @@ func (pckr *packer) PackALong(val int64) {
 		pckr.PackLong(0xd3, val)
 	} else {
 		if val >= -32 {
-			pckr.PackAByte(0xe0 | byte(val) + 32)
+			pckr.PackAByte(0xe0 | (byte(val) + 32))
 			return
 		}
 
@@ -247,7 +279,7 @@ func (pckr *packer) PackALong(val int64) {
 			pckr.PackInt(0xd2, int32(val))
 			return
 		}
-		pckr.PackLong(0xd3, int64(val))
+		pckr.PackLong(0xd3, val)
 	}
 }
 
@@ -270,7 +302,7 @@ func (pckr *packer) PackAInt(val int) {
 		pckr.PackInt(0xce, int32(val))
 	} else {
 		if val >= -32 {
-			pckr.PackAByte(0xe0 | byte(val+32))
+			pckr.PackAByte(0xe0 | (byte(val) + 32))
 			return
 		}
 
@@ -287,11 +319,21 @@ func (pckr *packer) PackAInt(val int) {
 	}
 }
 
+var _b8 = []byte{0, 0, 0, 0, 0, 0, 0, 0}
+var _b4 = []byte{0, 0, 0, 0}
+var _b2 = []byte{0, 0}
+
+func (pckr *packer) grow(b []byte) int {
+	pos := pckr.buffer.Len()
+	pckr.buffer.Write(b)
+	return pos
+}
+
 func (pckr *packer) PackString(val string) {
 	size := len(val) + 1
 	pckr.PackByteArrayBegin(size)
 	pckr.buffer.WriteByte(byte(ParticleType.STRING))
-	pckr.buffer.Write([]byte(val))
+	pckr.buffer.WriteString(val)
 }
 
 func (pckr *packer) PackByteArray(src []byte, srcOffset int, srcLength int) {
@@ -300,22 +342,26 @@ func (pckr *packer) PackByteArray(src []byte, srcOffset int, srcLength int) {
 
 func (pckr *packer) PackLong(valType int, val int64) {
 	pckr.buffer.WriteByte(byte(valType))
-	pckr.buffer.Write(Buffer.Int64ToBytes(val, nil, pckr.offset))
+	pos := pckr.grow(_b8)
+	pckr.buffer.Write(Buffer.Int64ToBytes(val, pckr.buffer.Bytes(), pos))
 }
 
 func (pckr *packer) PackULong(val uint64) {
 	pckr.buffer.WriteByte(byte(0xcf))
-	pckr.buffer.Write(Buffer.Int64ToBytes(int64(val), nil, pckr.offset))
+	pos := pckr.grow(_b8)
+	Buffer.Int64ToBytes(int64(val), pckr.buffer.Bytes(), pos)
 }
 
 func (pckr *packer) PackInt(valType int, val int32) {
 	pckr.buffer.WriteByte(byte(valType))
-	pckr.buffer.Write(Buffer.Int32ToBytes(val, nil, pckr.offset))
+	pos := pckr.grow(_b4)
+	Buffer.Int32ToBytes(val, pckr.buffer.Bytes(), pos)
 }
 
 func (pckr *packer) PackShort(valType int, val int16) {
 	pckr.buffer.WriteByte(byte(valType))
-	pckr.buffer.Write(Buffer.Int16ToBytes(val, nil, pckr.offset))
+	pos := pckr.grow(_b2)
+	Buffer.Int16ToBytes(val, pckr.buffer.Bytes(), pos)
 }
 
 func (pckr *packer) PackByte(valType int, val byte) {
@@ -325,6 +371,26 @@ func (pckr *packer) PackByte(valType int, val byte) {
 
 func (pckr *packer) PackNil() {
 	pckr.buffer.WriteByte(0xc0)
+}
+
+func (pckr *packer) PackBool(val bool) {
+	if val {
+		pckr.buffer.WriteByte(0xc3)
+	} else {
+		pckr.buffer.WriteByte(0xc2)
+	}
+}
+
+func (pckr *packer) PackFloat32(val float32) {
+	pckr.buffer.WriteByte(0xca)
+	pos := pckr.grow(_b4)
+	Buffer.Float32ToBytes(val, pckr.buffer.Bytes(), pos)
+}
+
+func (pckr *packer) PackFloat64(val float64) {
+	pckr.buffer.WriteByte(0xcb)
+	pos := pckr.grow(_b8)
+	Buffer.Float64ToBytes(val, pckr.buffer.Bytes(), pos)
 }
 
 func (pckr *packer) PackAByte(val byte) {

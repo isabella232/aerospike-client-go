@@ -15,7 +15,6 @@
 package aerospike_test
 
 import (
-	"flag"
 	"math/rand"
 	"strings"
 	"time"
@@ -26,10 +25,11 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+const RANDOM_OPS_RUNS = 1000
+
 // ALL tests are isolated by SetName and Key, which are 50 random charachters
 var _ = Describe("Aerospike", func() {
-	rand.Seed(time.Now().UnixNano())
-	flag.Parse()
+	initTestVars()
 
 	Describe("Random Data Operations", func() {
 		// connection data
@@ -42,7 +42,10 @@ var _ = Describe("Aerospike", func() {
 		var rec *Record
 
 		// use the same client for all
-		client, _ := NewClient(*host, *port)
+		client, err := NewClientWithPolicy(clientPolicy, *host, *port)
+		if err != nil {
+			panic(err)
+		}
 
 		Context("Put/Get operations", func() {
 
@@ -54,7 +57,7 @@ var _ = Describe("Aerospike", func() {
 				bin2 := NewBin("Aerospike2", "a") // to avoid deletion of key
 
 				i := 0
-				for i < 10000 {
+				for i < RANDOM_OPS_RUNS {
 					iters := rand.Intn(10) + 1
 					for wr := 0; wr < iters; wr++ {
 						i++
@@ -93,7 +96,7 @@ var _ = Describe("Aerospike", func() {
 				}
 
 				i := 0
-				for i < 10000 {
+				for i < RANDOM_OPS_RUNS {
 					iters := rand.Intn(1000) + 1
 					for wr := 0; wr < iters; wr++ {
 						i++

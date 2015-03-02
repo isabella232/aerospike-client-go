@@ -14,22 +14,26 @@
 
 package aerospike
 
-// Query statement parameters.
+import (
+	xornd "github.com/aerospike/aerospike-client-go/types/rand"
+)
+
+// Statement encapsulates query statement parameters.
 type Statement struct {
-	// Query Namespace
+	// Namespace determines query Namespace
 	Namespace string
 
-	// Query Set name (optional)
+	// SetName determines query Set name (Optional)
 	SetName string
 
-	// Optional query index name.  If not set, the server
-	// will determine the index from the filter's bin name.
+	// IndexName determines query index name (Optional)
+	// If not set, the server will determine the index from the filter's bin name.
 	IndexName string
 
-	// bin names (optional)
+	// BinNames detemines bin names (optional)
 	BinNames []string
 
-	// Optional query filters.
+	// Filters determine query filters (Optional)
 	// Currently, only one filter is allowed by the server on a secondary index lookup.
 	// If multiple filters are necessary, see QueryFilter example for a workaround.
 	// QueryFilter demonstrates how to add additional filters in an user-defined
@@ -40,30 +44,33 @@ type Statement struct {
 	functionName string
 	functionArgs []Value
 
-	// Set optional query task id.
-	TaskId int
+	// TaskId determines query task id. (Optional)
+	TaskId int64
 
 	// determines if the query should return data
 	returnData bool
 }
 
+// NewStatement initializes a new Statement instance.
 func NewStatement(ns string, set string, binNames ...string) *Statement {
 	return &Statement{
 		Namespace:  ns,
 		SetName:    set,
 		BinNames:   binNames,
 		returnData: true,
+		TaskId:     xornd.Int64(),
 	}
 }
 
-// Add a filter to the statement
+// Addfilter adds a filter to the statement.
 func (stmt *Statement) Addfilter(filter *Filter) error {
 	stmt.Filters = append(stmt.Filters, filter)
 
 	return nil
 }
 
-// Set aggregation function parameters.  This function will be called on both the server
+// SetAggregateFunction sets aggregation function parameters.
+// This function will be called on both the server
 // and client for each selected item.
 func (stmt *Statement) SetAggregateFunction(packageName string, functionName string, functionArgs []Value, returnData bool) {
 	stmt.packageName = packageName
@@ -72,7 +79,14 @@ func (stmt *Statement) SetAggregateFunction(packageName string, functionName str
 	stmt.returnData = returnData
 }
 
-// Return if full namespace/set scan is specified.
+// IsScan determines is the Statement is a full namespace/set scan or a selective Query.
 func (stmt *Statement) IsScan() bool {
 	return stmt.Filters == nil
+}
+
+// Always set the taskId client-side to a non-zero random value
+func (stmt *Statement) setTaskId() {
+	for stmt.TaskId == 0 {
+		stmt.TaskId = xornd.Int64()
+	}
 }

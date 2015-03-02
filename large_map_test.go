@@ -15,10 +15,6 @@
 package aerospike_test
 
 import (
-	"flag"
-	"math/rand"
-	"time"
-
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
@@ -26,8 +22,8 @@ import (
 )
 
 var _ = Describe("LargeMap Test", func() {
-	rand.Seed(time.Now().UnixNano())
-	flag.Parse()
+	initTestVars()
+
 	// connection data
 	var client *Client
 	var err error
@@ -37,16 +33,17 @@ var _ = Describe("LargeMap Test", func() {
 	var wpolicy = NewWritePolicy(0, 0)
 
 	BeforeEach(func() {
-		client, err = NewClient(*host, *port)
+		client, err = NewClientWithPolicy(clientPolicy, *host, *port)
 		Expect(err).ToNot(HaveOccurred())
 		key, err = NewKey(ns, set, randString(50))
 		Expect(err).ToNot(HaveOccurred())
 	})
 
-	It("should create a valid LargeMap; Support PutMap() and Size()", func() {
+	It("should create a valid LargeMap; Support PutMap() and Size(), Destroy()", func() {
 		lmap := client.GetLargeMap(wpolicy, key, randString(10), "")
-		_, err := lmap.Size()
-		Expect(err).To(HaveOccurred()) // bin not exists
+		res, err := lmap.Size()
+		Expect(err).ToNot(HaveOccurred()) // bin not exists
+		Expect(res).To(Equal(0))
 
 		testMap := make(map[interface{}]interface{})
 		for i := 1; i <= 100; i++ {
@@ -60,16 +57,40 @@ var _ = Describe("LargeMap Test", func() {
 		sz, err := lmap.Size()
 		Expect(err).ToNot(HaveOccurred())
 		Expect(sz).To(Equal(100))
+
+		err = lmap.Destroy()
+		Expect(err).ToNot(HaveOccurred())
+
+		resMap, err := lmap.Scan()
+		Expect(len(resMap)).To(Equal(0))
+		Expect(err).ToNot(HaveOccurred())
 	})
 
-	It("should create a valid LargeMap; Support Put(), Remove(), Find(), Size(), Scan() and GetCapacity()", func() {
+	It("should create a valid LargeMap; Support Put(), Exists(), Get(), Remove(), Find(), Size(), Scan() and GetCapacity()", func() {
 		lmap := client.GetLargeMap(wpolicy, key, randString(10), "")
-		_, err := lmap.Size()
-		Expect(err).To(HaveOccurred()) // bin not exists
+		res, err := lmap.Size()
+		Expect(err).ToNot(HaveOccurred()) // bin not exists
+		Expect(res).To(Equal(0))
 
 		for i := 1; i <= 100; i++ {
 			err = lmap.Put(NewValue(i*100), NewValue(i))
 			Expect(err).ToNot(HaveOccurred())
+
+			// check if it can be retrieved
+			elem, err := lmap.Get(i * 100)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(elem).To(Equal(map[interface{}]interface{}{i * 100: i}))
+
+			// check if it exists
+			exists, err := lmap.Exists(i * 100)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(exists).To(BeTrue())
+
+			// check for a non-existing element
+			// This test only passes in Aerospike 3.4.1 and above
+			elem, err = lmap.Get(i * 70000)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(elem).To(Equal(map[interface{}]interface{}{}))
 
 			// confirm that the LMAP size has been increased to the expected size
 			sz, err := lmap.Size()
@@ -94,6 +115,16 @@ var _ = Describe("LargeMap Test", func() {
 		}
 		Expect(err).ToNot(HaveOccurred())
 		Expect(len(scanResult)).To(Equal(100))
+		Expect(scanResult).To(Equal(scanExpectation))
+
+		// remove all keys
+		for i := 1; i <= 100; i++ {
+			err = lmap.Remove(i * 100)
+			Expect(err).ToNot(HaveOccurred())
+		}
+
+		scanExpectation = make(map[interface{}]interface{})
+		scanResult, err = lmap.Scan()
 		Expect(scanResult).To(Equal(scanExpectation))
 	})
 

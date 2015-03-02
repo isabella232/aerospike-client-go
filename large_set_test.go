@@ -15,10 +15,6 @@
 package aerospike_test
 
 import (
-	"flag"
-	"math/rand"
-	"time"
-
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
@@ -26,8 +22,8 @@ import (
 )
 
 var _ = Describe("LargeSet Test", func() {
-	rand.Seed(time.Now().UnixNano())
-	flag.Parse()
+	initTestVars()
+
 	// connection data
 	var client *Client
 	var err error
@@ -37,22 +33,33 @@ var _ = Describe("LargeSet Test", func() {
 	var wpolicy = NewWritePolicy(0, 0)
 
 	BeforeEach(func() {
-		client, err = NewClient(*host, *port)
+		client, err = NewClientWithPolicy(clientPolicy, *host, *port)
 		Expect(err).ToNot(HaveOccurred())
 		key, err = NewKey(ns, set, randString(50))
 		Expect(err).ToNot(HaveOccurred())
 	})
 
-	It("should create a valid LargeSet; Support Add(), Remove(), Find(), Size(), Scan() and GetCapacity()", func() {
+	It("should create a valid LargeSet; Support Add(), Get(), Remove(), Exists(), Size(), Scan(), Destroy() and GetCapacity()", func() {
 		const elems = 100
 
 		lset := client.GetLargeSet(wpolicy, key, randString(10), "")
-		_, err := lset.Size()
-		Expect(err).To(HaveOccurred()) // bin not exists
+		res, err := lset.Size()
+		Expect(err).ToNot(HaveOccurred()) // bin not exists
+		Expect(res).To(Equal(0))
 
 		for i := 1; i <= elems; i++ {
-			err = lset.Add(NewValue(i))
+			err = lset.Add(i)
 			Expect(err).ToNot(HaveOccurred())
+
+			// check if it can be retrieved
+			elem, err := lset.Get(i)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(elem).To(Equal(i))
+
+			// check for a non-existing element
+			elem, err = lset.Get(i * 70000)
+			Expect(err).To(HaveOccurred())
+			Expect(elem).To(BeNil())
 
 			// confirm that the LSET size has been increased to the expected size
 			sz, err := lset.Size()
@@ -84,6 +91,12 @@ var _ = Describe("LargeSet Test", func() {
 			Expect(exists).To(BeFalse())
 		}
 
+		err = lset.Destroy()
+		Expect(err).ToNot(HaveOccurred())
+
+		scanResult, err = lset.Scan()
+		Expect(err).ToNot(HaveOccurred())
+		Expect(len(scanResult)).To(Equal(0))
 	})
 
 	It("should correctly GetConfig()", func() {

@@ -15,18 +15,15 @@
 package aerospike
 
 type operateCommand struct {
-	readCommand
+	*readCommand
 
 	policy     *WritePolicy
 	operations []*Operation
 }
 
 func newOperateCommand(cluster *Cluster, policy *WritePolicy, key *Key, operations []*Operation) *operateCommand {
-	if policy == nil {
-		policy = NewWritePolicy(0, 0)
-	}
 	return &operateCommand{
-		readCommand: *newReadCommand(cluster, policy, key, nil),
+		readCommand: newReadCommand(cluster, policy, key, nil),
 		policy:      policy,
 		operations:  operations,
 	}
