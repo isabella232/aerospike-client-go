@@ -41,7 +41,7 @@ func NewAerospikeError(code ResultCode, messages ...string) error {
 	err := ResultCodeToError(code)
 
 	if err == NO_ERROR_MESSAGE_ERROR && len(messages) > 0 {
-		err := errors.New(strings.Join(messages, " "))
+		err = errors.New(strings.Join(messages, " "))
 	}
 	
 	return AerospikeError{error: err, resultCode: code}
