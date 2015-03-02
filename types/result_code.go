@@ -23,248 +23,248 @@ type ResultCode int
 const (
 	// Asynchronous max concurrent database commands have been exceeded and therefore rejected.
 	TYPE_NOT_SUPPORTED ResultCode = -7
-	TYPE_NOT_SUPPORTED_ERROR = errors.New("Type cannot be converted to Value Type.")
 
 	// Asynchronous max concurrent database commands have been exceeded and therefore rejected.
 	COMMAND_REJECTED ResultCode = -6
-	COMMAND_REJECTED_ERROR = errors.New("command rejected")
 
 	// Query was terminated by user.
 	QUERY_TERMINATED ResultCode = -5
-	QUERY_TERMINATED_ERROR = errors.New("Query terminated")
 
 	// Scan was terminated by user.
 	SCAN_TERMINATED ResultCode = -4
-	SCAN_TERMINATED_ERROR = errors.New("Scan terminated")
 
 	// Chosen node is not currently active.
 	INVALID_NODE_ERROR ResultCode = -3
-	INVALID_NODE_ERROR_ERROR = errors.New("Invalid node")
 
 	// Client parse error.
 	PARSE_ERROR ResultCode = -2
-	PARSE_ERROR_ERROR = errors.New("Parse error")
 
 	// Client serialization error.
 	SERIALIZE_ERROR ResultCode = -1
-	SERIALIZE_ERROR_ERROR = errors.New("Serialize error")
 
 	// Operation was successful.
 	OK ResultCode = 0
-	OK_ERROR = errors.New("ok")
 
 	// Unknown server failure.
 	SERVER_ERROR ResultCode = 1
-	SERVER_ERROR_ERROR = errors.New("Server error")
 
 	// On retrieving, touching or replacing a record that doesn't exist.
 	KEY_NOT_FOUND_ERROR ResultCode = 2
-	KEY_NOT_FOUND_ERROR_ERROR = errors.New("Key not found")
 
 	// On modifying a record with unexpected generation.
 	GENERATION_ERROR ResultCode = 3
-	GENERATION_ERROR_ERROR = errors.New("Generation error")
 
 	// Bad parameter(s) were passed in database operation call.
 	PARAMETER_ERROR ResultCode = 4
-	PARAMETER_ERROR_ERROR = errors.New("Parameter error")
 
 	// On create-only (write unique) operations on a record that already
 	// exists.
 	KEY_EXISTS_ERROR ResultCode = 5
-	KEY_EXISTS_ERROR_ERROR = errors.New("Key already exists")
 
 	// On create-only (write unique) operations on a bin that already
 	// exists.
 	BIN_EXISTS_ERROR ResultCode = 6
-	BIN_EXISTS_ERROR_ERROR = errors.New("Bin already exists")
 
 	// Expected cluster ID was not received.
 	CLUSTER_KEY_MISMATCH ResultCode = 7
-	CLUSTER_KEY_MISMATCH_ERROR = errors.New("Cluster key mismatch")
 
 	// Server has run out of memory.
 	SERVER_MEM_ERROR ResultCode = 8
-	SERVER_MEM_ERROR_ERROR = errors.New("Server memory error")
 
 	// Client or server has timed out.
 	TIMEOUT ResultCode = 9
-	TIMEOUT_ERROR = errors.New("Timeout")
 
 	// XDS product is not available.
 	NO_XDS ResultCode = 10
-	NO_XDS_ERROR = errors.New("XDS not available")
 
 	// Server is not accepting requests.
 	SERVER_NOT_AVAILABLE ResultCode = 11
-	SERVER_NOT_AVAILABLE_ERROR = errors.New("Server not available")
 
 	// Operation is not supported with configured bin type (single-bin or
 	// multi-bin).
 	BIN_TYPE_ERROR ResultCode = 12
-	BIN_TYPE_ERROR_ERROR = errors.New("Bin type error")
 
 	// Record size exceeds limit.
 	RECORD_TOO_BIG ResultCode = 13
-	RECORD_TOO_BIG_ERROR = errors.New("Record too big")
 
 	// Too many concurrent operations on the same record.
 	KEY_BUSY ResultCode = 14
-	KEY_BUSY_ERROR = errors.New("Hot key")
 
 	// Scan aborted by server.
 	SCAN_ABORT ResultCode = 15
-	SCAN_ABORT_ERROR = errors.New("Scan aborted")
 
 	// Unsupported Server Feature (e.g. Scan + UDF)
 	UNSUPPORTED_FEATURE ResultCode = 16
-	UNSUPPORTED_FEATURE_ERROR = errors.New("Unsupported Server Feature")
 
 	// Specified bin name does not exist in record.
 	BIN_NOT_FOUND ResultCode = 17
-	BIN_NOT_FOUND_ERROR = errors.New("Bin not found")
 
 	// Specified bin name does not exist in record.
 	DEVICE_OVERLOAD ResultCode = 18
-	DEVICE_OVERLOAD_ERROR = errors.New("Device overload")
 
 	// Key type mismatch.
 	KEY_MISMATCH ResultCode = 19
-	KEY_MISMATCH_ERROR = errors.New("Key mismatch")
 
 	// Invalid namespace.
 	INVALID_NAMESPACE ResultCode = 20
-	INVALID_NAMESPACE_ERROR = errors.New("Namespace not found")
 
 	// Bin name length greater than 14 characters.
 	BIN_NAME_TOO_LONG ResultCode = 21
-	BIN_NAME_TOO_LONG_ERROR = errors.New("Bin name length greater than 14 characters")
 
 	// Operation not allowed at this time.
 	FAIL_FORBIDDEN ResultCode = 22
-	FAIL_FORBIDDEN_ERROR = errors.New("Operation not allowed at this time")
 
 	// There are no more records left for query.
 	QUERY_END ResultCode = 50
-	QUERY_END_ERROR = errors.New("Query end")
 
 	SECURITY_NOT_SUPPORTED        ResultCode = 51
-	SECURITY_NOT_SUPPORTED_ERROR = errors.New("Security not supported")
-
 	SECURITY_NOT_ENABLED          ResultCode = 52
-	SECURITY_NOT_ENABLED_ERROR = errors.New("Security not enabled")
-
 	SECURITY_SCHEME_NOT_SUPPORTED ResultCode = 53
-	SECURITY_SCHEME_NOT_SUPPORTED_ERROR = errors.New("Security scheme not supported")
 
 	// Administration command is invalid.
 	INVALID_COMMAND ResultCode = 54
-	INVALID_COMMAND_ERROR = errors.New("Invalid command")
 
 	// Administration field is invalid.
 	INVALID_FIELD ResultCode = 55
-	INVALID_FIELD_ERROR = errors.New("Invalid field")
 
 	ILLEGAL_STATE ResultCode = 56
-	ILLEGAL_STATE_ERROR = errors.New("Illegal state")
 
 	// User name is invalid.
 	INVALID_USER ResultCode = 60
-	INVALID_USER_ERROR = errors.New("Invalid user")
 
 	// User was previously created.
 	USER_ALREADY_EXISTS ResultCode = 61
-	USER_ALREADY_EXISTS_ERROR = errors.New("User already exists")
 
 	// Password is invalid.
 	INVALID_PASSWORD ResultCode = 62
-	INVALID_PASSWORD_ERROR = errors.New("Invalid password")
 
 	// Security credential is invalid.
 	EXPIRED_PASSWORD ResultCode = 63
-	EXPIRED_PASSWORD_ERROR = errors.New("Expired password")
 
 	// Forbidden password (e.g. recently used)
 	FORBIDDEN_PASSWORD ResultCode = 64
-	FORBIDDEN_PASSWORD_ERROR = errors.New("Forbidden password")
 
 	// Security credential is invalid.
 	INVALID_CREDENTIAL ResultCode = 65
-	INVALID_CREDENTIAL_ERROR = errors.New("Invalid credential")
 
 	// Role name is invalid.
 	INVALID_ROLE ResultCode = 70
-	INVALID_ROLE_ERROR = errors.New("Invalid role")
 
 	// Role already exists.
 	ROLE_ALREADY_EXISTS ResultCode = 71
-	ROLE_ALREADY_EXISTS_ERROR = errors.New("Role already exists")
 
 	// Privilege is invalid.
 	INVALID_PRIVILEGE ResultCode = 72
-	INVALID_PRIVILEGE_ERROR = errors.New("Invalid privilege")
 
 	// User must be authentication before performing database operations.
 	NOT_AUTHENTICATED ResultCode = 80
-	NOT_AUTHENTICATED_ERROR = errors.New("Not authenticated")
 
 	// User does not posses the required role to perform the database operation.
 	ROLE_VIOLATION ResultCode = 81
-	ROLE_VIOLATION_ERROR = errors.New("Role violation")
 
 	// A user defined function returned an error code.
 	UDF_BAD_RESPONSE ResultCode = 100
-	UDF_BAD_RESPONSE_ERROR = errors.New("UDF returned error")
 
 	// The requested item in a large collection was not found.
 	LARGE_ITEM_NOT_FOUND ResultCode = 125
-	LARGE_ITEM_NOT_FOUND_ERROR = errors.New("Large collection item not found")
 
 	// Secondary index already exists.
 	INDEX_FOUND ResultCode = 200
-	INDEX_FOUND_ERROR = errors.New("Index already exists")
 
 	// Requested secondary index does not exist.
 	INDEX_NOTFOUND ResultCode = 201
-	INDEX_NOTFOUND_ERROR = errors.New("Index not found")
 
 	// Secondary index memory space exceeded.
 	INDEX_OOM ResultCode = 202
-	INDEX_OOM_ERROR = errors.New("Index out of memory")
 
 	// Secondary index not available.
 	INDEX_NOTREADABLE ResultCode = 203
-	INDEX_NOTREADABLE_ERROR = errors.New("Index not readable")
 
 	// Generic secondary index error.
 	INDEX_GENERIC ResultCode = 204
-	INDEX_GENERIC_ERROR = errors.New("Index error")
 
 	// Index name maximum length exceeded.
 	INDEX_NAME_MAXLEN ResultCode = 205
-	INDEX_NAME_MAXLEN_ERROR = errors.New("Index name max length exceeded")
 
 	// Maximum number of indicies exceeded.
 	INDEX_MAXCOUNT ResultCode = 206
-	INDEX_MAXCOUNT_ERROR = errors.New("Index count exceeds max")
 
 	// Secondary index query aborted.
 	QUERY_ABORTED ResultCode = 210
-	QUERY_ABORTED_ERROR = errors.New("Query aborted")
 
 	// Secondary index queue full.
 	QUERY_QUEUEFULL ResultCode = 211
-	QUERY_QUEUEFULL_ERROR = errors.New("Query queue full")
 
 	// Secondary index query timed out on server.
 	QUERY_TIMEOUT ResultCode = 212
-	QUERY_TIMEOUT_ERROR = errors.New("Query timeout")
 
 	// Generic query error.
 	QUERY_GENERIC ResultCode = 213
-	QUERY_GENERIC_ERROR = errors.New("Query error")
+)
 
-	NO_ERROR_MESSAGE_ERROR = errors.New("Error message not available yet - please file an issue on github.")
+var (
+	TYPE_NOT_SUPPORTED_ERROR            = errors.New("Type cannot be converted to Value Type.")
+	COMMAND_REJECTED_ERROR              = errors.New("command rejected")
+	QUERY_TERMINATED_ERROR              = errors.New("Query terminated")
+	SCAN_TERMINATED_ERROR               = errors.New("Scan terminated")
+	INVALID_NODE_ERROR_ERROR            = errors.New("Invalid node")
+	PARSE_ERROR_ERROR                   = errors.New("Parse error")
+	SERIALIZE_ERROR_ERROR               = errors.New("Serialize error")
+	OK_ERROR                            = errors.New("ok")
+	SERVER_ERROR_ERROR                  = errors.New("Server error")
+	KEY_NOT_FOUND_ERROR_ERROR           = errors.New("Key not found")
+	GENERATION_ERROR_ERROR              = errors.New("Generation error")
+	PARAMETER_ERROR_ERROR               = errors.New("Parameter error")
+	KEY_EXISTS_ERROR_ERROR              = errors.New("Key already exists")
+	BIN_EXISTS_ERROR_ERROR              = errors.New("Bin already exists")
+	CLUSTER_KEY_MISMATCH_ERROR          = errors.New("Cluster key mismatch")
+	SERVER_MEM_ERROR_ERROR              = errors.New("Server memory error")
+	TIMEOUT_ERROR                       = errors.New("Timeout")
+	NO_XDS_ERROR                        = errors.New("XDS not available")
+	SERVER_NOT_AVAILABLE_ERROR          = errors.New("Server not available")
+	BIN_TYPE_ERROR_ERROR                = errors.New("Bin type error")
+	RECORD_TOO_BIG_ERROR                = errors.New("Record too big")
+	KEY_BUSY_ERROR                      = errors.New("Hot key")
+	SCAN_ABORT_ERROR                    = errors.New("Scan aborted")
+	UNSUPPORTED_FEATURE_ERROR           = errors.New("Unsupported Server Feature")
+	BIN_NOT_FOUND_ERROR                 = errors.New("Bin not found")
+	DEVICE_OVERLOAD_ERROR               = errors.New("Device overload")
+	KEY_MISMATCH_ERROR                  = errors.New("Key mismatch")
+	INVALID_NAMESPACE_ERROR             = errors.New("Namespace not found")
+	BIN_NAME_TOO_LONG_ERROR             = errors.New("Bin name length greater than 14 characters")
+	FAIL_FORBIDDEN_ERROR                = errors.New("Operation not allowed at this time")
+	QUERY_END_ERROR                     = errors.New("Query end")
+	SECURITY_NOT_SUPPORTED_ERROR        = errors.New("Security not supported")
+	SECURITY_NOT_ENABLED_ERROR          = errors.New("Security not enabled")
+	SECURITY_SCHEME_NOT_SUPPORTED_ERROR = errors.New("Security scheme not supported")
+	INVALID_COMMAND_ERROR               = errors.New("Invalid command")
+	INVALID_FIELD_ERROR                 = errors.New("Invalid field")
+	ILLEGAL_STATE_ERROR                 = errors.New("Illegal state")
+	INVALID_USER_ERROR                  = errors.New("Invalid user")
+	USER_ALREADY_EXISTS_ERROR           = errors.New("User already exists")
+	INVALID_PASSWORD_ERROR              = errors.New("Invalid password")
+	EXPIRED_PASSWORD_ERROR              = errors.New("Expired password")
+	FORBIDDEN_PASSWORD_ERROR            = errors.New("Forbidden password")
+	INVALID_CREDENTIAL_ERROR            = errors.New("Invalid credential")
+	INVALID_ROLE_ERROR                  = errors.New("Invalid role")
+	ROLE_ALREADY_EXISTS_ERROR           = errors.New("Role already exists")
+	INVALID_PRIVILEGE_ERROR             = errors.New("Invalid privilege")
+	NOT_AUTHENTICATED_ERROR             = errors.New("Not authenticated")
+	ROLE_VIOLATION_ERROR                = errors.New("Role violation")
+	UDF_BAD_RESPONSE_ERROR              = errors.New("UDF returned error")
+	LARGE_ITEM_NOT_FOUND_ERROR          = errors.New("Large collection item not found")
+	INDEX_FOUND_ERROR                   = errors.New("Index already exists")
+	INDEX_NOTFOUND_ERROR                = errors.New("Index not found")
+	INDEX_OOM_ERROR                     = errors.New("Index out of memory")
+	INDEX_NOTREADABLE_ERROR             = errors.New("Index not readable")
+	INDEX_GENERIC_ERROR                 = errors.New("Index error")
+	INDEX_NAME_MAXLEN_ERROR             = errors.New("Index name max length exceeded")
+	INDEX_MAXCOUNT_ERROR                = errors.New("Index count exceeds max")
+	QUERY_ABORTED_ERROR                 = errors.New("Query aborted")
+	QUERY_QUEUEFULL_ERROR               = errors.New("Query queue full")
+	QUERY_TIMEOUT_ERROR                 = errors.New("Query timeout")
+	QUERY_GENERIC_ERROR                 = errors.New("Query error")
+	NO_ERROR_MESSAGE_ERROR              = errors.New("Error message not available yet - please file an issue on github.")
 )
 
 // Should connection be put back into pool.
