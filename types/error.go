@@ -38,10 +38,11 @@ func (ase AerospikeError) ResultCode() ResultCode {
 // If no message is provided, the result code will be translated into the default
 // error message automatically.
 func NewAerospikeError(code ResultCode, messages ...string) error {
-	if len(messages) == 0 {
-		messages = []string{ResultCodeToString(code)}
-	}
+	err := ResultCodeToError(code)
 
-	err := errors.New(strings.Join(messages, " "))
+	if err == NO_ERROR_MESSAGE_ERROR && len(messages) > 0 {
+		err := errors.New(strings.Join(messages, " "))
+	}
+	
 	return AerospikeError{error: err, resultCode: code}
 }
